@@ -9,7 +9,6 @@
  */
 var xV = {};
 
-
 /** Tiles */
 xV.Tiles = {};
 

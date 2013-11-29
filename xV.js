@@ -11,10 +11,10 @@ var xV = {};
 xV.Tiles = {};
 
 /**
- * @class
+ * @class Holds individual tile information and moves them around.
+ *
  * @author Raul Kalvo
  *
- * @param {Number} x The x value of the vector
  */
 
 xV.Tiles.Tile = function(){
@@ -33,10 +33,20 @@ xV.Tiles.Tile = function(){
 
 xV.Tiles.Tile.prototype = {
 
+
+    /**
+     *Builds tile parameters and quadKey from lat, long and zoom level
+     *
+     * @param {number:double} lat Degrees between -180 to 1800
+     * @param {number:double} long Degrees between -90 to 90
+     * @param {number:int} zoom Levels between 1 and  24 (theoretical)
+     */
     initByGeo: function(lat, long, zoom){
 
         // lat = [-90 to 90] degrees
         // long = [-180 to 180] degrees
+
+
 
         this.lat        = lat;
         this.long       = long;
@@ -54,12 +64,24 @@ xV.Tiles.Tile.prototype = {
 
     },
 
+    /**
+     * Sets QKey.
+     * Note that Geo coords., zoom, tile parameters are not calculated
+     * @param QKey
+     */
     setQKey : function(QKey){
 
         this.qKey = QKey;
 
     },
 
+    /**
+     * Sets QuadKey from tile index
+     *
+     * @param {number:int} x Tile parameter in left-right order. Range from o to 2^z-1
+     * @param {number:int} y Tile parameter in top-down order. Range from 0 to 2^z-1
+     * @param {number:int} z Zoom level. Range from 1 to n
+     */
     setQKeyByTile : function(x, y, z){
 
         quadKey  = [];
@@ -88,6 +110,10 @@ xV.Tiles.Tile.prototype = {
 
     },
 
+    /**
+     * Set tile parameters from QuadKey
+     * @param qKey
+     */
     setTileByQKey : function(qKey){
 
         this.x = 0;
@@ -127,6 +153,10 @@ xV.Tiles.Tile.prototype = {
 
     },
 
+    /**
+     * Shift tile parameter from left to right
+     * @param {number:int} units Positive number moves from left to right. Negative from right to left
+     */
     moveRight : function(units) {
 
         this.x = this.x + units;
@@ -143,6 +173,10 @@ xV.Tiles.Tile.prototype = {
 
     },
 
+    /**
+     * Shift tile parameter from top to down
+     * @param {number:int} units Positive number moves from top to down. Negative from down to top
+     */
     moveDown : function(units) {
 
         this.y = this.y + units;

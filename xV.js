@@ -17,7 +17,6 @@ xV.Tiles = {};
  * @param {Number} x The x value of the vector
  */
 
-
 xV.Tiles.Tile = function(){
 
     this.long   = null; // double >> y

@@ -1,6 +1,4 @@
 
-
-
 /**
  * Visalization framework
  *
@@ -19,6 +17,7 @@ xV.Tiles = {};
  * @param {Number} x The x value of the vector
  */
 
+
 xV.Tiles.Tile = function(){
 
     this.long   = null; // double >> y
@@ -28,8 +27,9 @@ xV.Tiles.Tile = function(){
     this.z      = null; // int // zoom level
     this.qKey   = null; // int
 
-    this.tileHeight =  256; // px
+    this.tileHeight = 256; // px
     this.tileWidht =  256; // px
+
 }
 
 xV.Tiles.Tile.prototype = {

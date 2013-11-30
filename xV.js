@@ -17,6 +17,8 @@ xV.Tiles = {};
  *
  */
 
+
+
 xV.Tiles.Tile = function(){
 
     this.long   = null; // double >> y
@@ -28,6 +30,14 @@ xV.Tiles.Tile = function(){
 
     this.tileHeight = 256; // px
     this.tileWidht =  256; // px
+
+    // CONSTANTS
+
+    this.EarthRadius = 6378137;
+    this.MinLatitude = -85.05112878;
+    this.MaxLatitude = 85.05112878;
+    this.MinLongitude = -180;
+    this.MaxLongitude = 180;
 
 }
 
@@ -154,6 +164,65 @@ xV.Tiles.Tile.prototype = {
     },
 
     /**
+     * Retruns string
+     * @param{string} type ["orto", "hybrid", "45N","45W", "45S", "45E", "street"]
+     * @returns {string} URL Address
+     */
+    getBingAddress :  function (type){
+
+        var address = "";
+
+        switch (type){
+
+            case "orto":
+
+                address = "http://ecn.t" + this.qKey.substr(this.qKey.length-1, 1) + ".tiles.virtualearth.net/tiles/a" + this.qKey + ".jpeg?g=743&mkt=en-us&n=z";
+                break;
+
+            case "hybrid":
+
+                address = "http://ecn.t" + this.qKey.substr(this.qKey.length-1, 1) + ".tiles.virtualearth.net/tiles/h" + this.qKey + ".jpeg?g=743&mkt=en-us&n=z";
+                break;
+
+            case "street":
+
+                address ="http://ak.dynamic.t" + this.qKey.substr(this.qKey.length-1, 1) + ".tiles.virtualearth.net/comp/ch/" + this.qKey + "?mkt=en-us&it=G,VE,BX,L,LA&shading=hill&og=31&n=z";
+
+            case "45N":
+
+                address ="";
+
+            default :
+
+                address = "";
+        }
+
+
+
+
+
+        //
+
+        return address
+    },
+
+    /**
+     * @returns {{lat: (number|*), long: (number|*)}}
+     */
+    getTileUpperLeftLatLong : function () {
+
+        mapSize = MapSize(this.z);
+        x = (clip((this.x * this.tileWidht), 0, mapSize - 1) / mapSize) - 0.5;
+        y = 0.5 - (clip((this.y*this.tileHeight), 0, mapSize - 1) / mapSize);
+
+        latitude = 90 - 360 * Math.Atan(Math.Exp(-y * 2 * Math.PI)) / Math.PI;
+        longitude = 360 * x;
+
+        return { lat: latitude, long: longitude  }
+
+    },
+
+    /**
      * Shift tile parameter from left to right
      * @param {number:int} units Positive number moves from left to right. Negative from right to left
      */
@@ -190,7 +259,17 @@ xV.Tiles.Tile.prototype = {
 
         this.setQKeyByTile(this.x, this.y, this.z);
 
+    },
 
+    clip : function(n, minValue, maxValue){
+
+         return Math.Min(Math.Max(n, minValue), maxValue);
+
+    },
+
+    mapSize : function(levelOfDetail){
+
+            return  256 << levelOfDetail;
     }
 
 
@@ -286,9 +365,35 @@ xV.Tiles.Manager = function( tileObject ){
 
 xV.Tiles.Manager.prototype = {
 
-  setZoom : function(){
+  setZoom : function(zoom){
+
+      this.zoom = zoom;
+  },
+
+  setDatabase :  function(db) {
+
+      this.db =  db;
+
+  },
+
+  setConf : function(coef) {
+
+      this.coef =  coef;
+
+  },
+
+
+  downLoadTiles : function(){
+
+      // TODO
+
+        // 1. Rebuild boundary
+
+
+
 
   }
+
 
 
 }
@@ -315,16 +420,14 @@ var tileObject = {
 
       }
 
+
+
 var tm = xV.Tiles.Manager(tileObject);
-
-
 var t = new xV.Tiles.Tile();
 //n.setQKeyByTile(3, 5, 3);
 
 t.setTileByQKey("00");
 t.moveRight(2);
-
-
 
 console.log("tiles:");
 console.log(t.x);

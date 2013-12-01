@@ -5,23 +5,35 @@
  * @version 0.1
  * @author Raul Kalvo
  */
-var xV = {};
 
+
+    var _fs = require('fs');
+    var _request = require('request').defaults({encoding: null });
+    var _MBTiles =  require('mid-tile');
+
+    var _sql  = require('sqlite3').verbose();
+
+    var _mb = require('mbtiles');
+    var _queue = require('queue-async');
+
+    var _bf = require('buffer').Buffer;
+
+
+
+// ----------------------------------------------------------------------
+
+var xV = {};
 /** Tiles */
 xV.Tiles = {};
 
 /**
  * @class Holds individual tile information and moves them around.
- *
  * @author Raul Kalvo
  *
  */
-
-
-
 xV.Tiles.Tile = function(){
 
-    this.long   = null; // double >> y
+    this.long   = null; // {number:double << this.y}
     this.lat    = null; // double >> x
     this.x      = null; // int >> lat
     this.y      = null; // int >> long
@@ -55,8 +67,6 @@ xV.Tiles.Tile.prototype = {
 
         // lat = [-90 to 90] degrees
         // long = [-180 to 180] degrees
-
-
 
         this.lat        = lat;
         this.long       = long;
@@ -129,6 +139,7 @@ xV.Tiles.Tile.prototype = {
         this.x = 0;
         this.y = 0;
         this.z =  qKey.length;
+        this.qKey = qKey;
 
         for (var i = this.z; i > 0; i--){
 
@@ -164,6 +175,18 @@ xV.Tiles.Tile.prototype = {
     },
 
     /**
+     * Sets lat and long parameter.
+     * @param lat
+     * @param long
+     */
+    setLatLong : function(lat, long) {
+
+        this.lat =  lat;
+        this.long =  long;
+
+    },
+
+    /**
      * Retruns string
      * @param{string} type ["orto", "hybrid", "45N","45W", "45S", "45E", "street"]
      * @returns {string} URL Address
@@ -172,36 +195,55 @@ xV.Tiles.Tile.prototype = {
 
         var address = "";
 
+        var t = this.qKey.substr(this.qKey.length-1, 1);
+
         switch (type){
 
             case "orto":
 
-                address = "http://ecn.t" + this.qKey.substr(this.qKey.length-1, 1) + ".tiles.virtualearth.net/tiles/a" + this.qKey + ".jpeg?g=743&mkt=en-us&n=z";
+                address = "http://ecn.t" + t + ".tiles.virtualearth.net/tiles/a" + this.qKey + ".jpeg?g=743&mkt=en-us&n=z";
                 break;
 
             case "hybrid":
 
-                address = "http://ecn.t" + this.qKey.substr(this.qKey.length-1, 1) + ".tiles.virtualearth.net/tiles/h" + this.qKey + ".jpeg?g=743&mkt=en-us&n=z";
+                address = "http://ecn.t" + t + ".tiles.virtualearth.net/tiles/h" + this.qKey + ".jpeg?g=743&mkt=en-us&n=z";
                 break;
 
             case "street":
 
-                address ="http://ak.dynamic.t" + this.qKey.substr(this.qKey.length-1, 1) + ".tiles.virtualearth.net/comp/ch/" + this.qKey + "?mkt=en-us&it=G,VE,BX,L,LA&shading=hill&og=31&n=z";
+                address ="http://ak.dynamic.t" + t + ".tiles.virtualearth.net/comp/ch/" + this.qKey + "?mkt=en-us&it=G,VE,BX,L,LA&shading=hill&og=31&n=z";
+                break;
 
             case "45N":
 
-                address ="";
+//                if (this.qKey.length != 17) console.log(" 45Degree works nicely only with level 17 ");
+
+                // 123456789 1234567
+                // 03201011013021130
+                // 03201011013003312
+
+                address ="http://ak.t" + t  +".tiles.virtualearth.net/tiles/svi" + this.qKey + "?g=2135&dir=dir_n&n=z";
+                break;
+
+            case "45W":
+
+                address ="http://ak.t" + t  +".tiles.virtualearth.net/tiles/svi" + this.qKey + "?g=2135&dir=dir_w&n=z";
+                break;
+
+            case "45E":
+
+                address ="http://ak.t" + t  +".tiles.virtualearth.net/tiles/svi" + this.qKey + "?g=2135&dir=dir_e&n=z";
+                break;
+
+            case "45S":
+
+                address ="http://ak.t" + t  +".tiles.virtualearth.net/tiles/svi" + this.qKey + "?g=2135&dir=dir_s&n=z";
+                break;
 
             default :
 
                 address = "";
         }
-
-
-
-
-
-        //
 
         return address
     },
@@ -211,11 +253,25 @@ xV.Tiles.Tile.prototype = {
      */
     getTileUpperLeftLatLong : function () {
 
-        mapSize = MapSize(this.z);
-        x = (clip((this.x * this.tileWidht), 0, mapSize - 1) / mapSize) - 0.5;
-        y = 0.5 - (clip((this.y*this.tileHeight), 0, mapSize - 1) / mapSize);
+        mapSize = this.mapSize(this.z);
+        x = (this.clip((this.x * this.tileWidht), 0, mapSize - 1) / mapSize) - 0.5;
+        y = 0.5 - (this.clip((this.y*this.tileHeight), 0, mapSize - 1) / mapSize);
 
-        latitude = 90 - 360 * Math.Atan(Math.Exp(-y * 2 * Math.PI)) / Math.PI;
+        latitude = 90 - 360 * Math.atan(Math.exp(-y * 2 * Math.PI)) / Math.PI;
+        longitude = 360 * x;
+
+        return { lat: latitude, long: longitude  }
+
+    },
+
+    getTileLowerRightLatLong : function () {
+
+        mapSize = this.mapSize(this.z);
+        x = (this.clip(((this.x +1) * this.tileWidht), 0, mapSize) / mapSize) - 0.5;
+        y = 0.5 - (this.clip(((this.y+1)*this.tileHeight), 0, mapSize) / mapSize);
+
+
+        latitude = 90 - 360 * Math.atan(Math.exp(-y * 2 * Math.PI)) / Math.PI;
         longitude = 360 * x;
 
         return { lat: latitude, long: longitude  }
@@ -263,7 +319,7 @@ xV.Tiles.Tile.prototype = {
 
     clip : function(n, minValue, maxValue){
 
-         return Math.Min(Math.Max(n, minValue), maxValue);
+         return Math.min(Math.max(n, minValue), maxValue);
 
     },
 
@@ -289,125 +345,452 @@ xV.Tiles.Tile.prototype = {
  */
 xV.Tiles.Manager = function( tileObject ){
 
-  if (tileObject != null){
+    /**tileObject
+     *
 
-//      var tileObject = {
-//
-//          DB : "",
-//          UpLeft : {
-//              lat : 0,
-//              long : 0
-//          },
-//          UpLeftAddress :  undefined,
-//          BottomRight : {
-//              lat : 0,
-//              long : 0
-//          },
-//          BottomRightAddress : undefined,
-//          Zoom : 0,
-//          Coef : 1
-//
-//      }
+     DB : {string:path},
+     Project : {string},
+     UpLeft : {
+              lat : {number:double},
+              long : {number:double}
+          },
+     UpLeftAddress :  {string:quad decimal},
+     BottomRight : {
+              lat : {number:double},
+              long : {number:double}
+          },
+     BottomRightAddress : {string:quad decimal},
+     Zoom : {number:int in range of 1 to n},
+     Coef : {number:double in range 1 to 0}
 
-      this.db = null;
-      this.zoom = 1;
-      this.coef = 1;
+     }
 
-      this.UpLeftTile = null;
-      this.BottomRightTile = null;
+     */
+
+    // Global variables
+
+    this.db = null;
+    this.zoom = 1;
+    this.coef = 1;
+
+    this.UpLeftTile = null;
+    this.BottomRightTile = null;
+
+    this.dbBound = null;
+    this.downloadBound = null;
+
+    this.project = "untitled";
+
+    this.tileType = "orto";
+    this.tileHeight = 256;
+    this.tileWidth = 256;
+
+    this.isReady = false;
+
+    this.isDone  = true;
+
+    this.hasBoundary = false;
+    this.hasDatabase = false;
+
+    this.databaseBoundary = null;
+    this.tileBoundary = null;
+
+    // Closers
+
+    if (tileObject != null) {
+
+        d = tileObject;
+
+        if ("DB" in d) this.db = d.db;
+        if ("Proejct" in d) this.project = d.Project;
+        if ("Zoom" in d) this.zoom = d.zoom;
+        if ("Coef" in d) this.coef = d.coef;
 
 
-      if ("DB" in tileObject) {
-          this.db = tileObject.db;
-      }
+        if ("UpLeft" in d && "Zoom" in d) {
 
-      if ("Zoom" in tileObject) {
-          this.zoom = tileObject.zoom;
-      }
+            this.UpLeftTile = new xV.Tiles.Tile();
+            this.UpLeftTile.initByGeo(d.UpLeft.lat, d.UpLeft.long, this.zoom);
 
-      if ("Coef" in tileObject) {
+        }
 
-          this.coef = tileObject.coef;
+        if ("UpLeftAddress" in d) {
 
-      }
+            this.UpLeftTile = new xV.Tiles.Tile();
+            this.UpLeftTile.setTileByQKey(d.UpLeftAddress);
 
-      if ("UpLeft" in tileObject && "Zoom" in tileObject) {
+        }
 
-          this.UpLeftTile = new xV.Tiles.Tile();
-          this.UpLeftTile.initByGeo(tileObject.UpLeft.lat, tileObject.UpLeft.long, this.zoom);
+        if ("BottomRight" in d && "Zoom" in d) {
 
-      }
+            this.BottomRightTile = new xV.Tiles.Tile();
+            this.BottomRightTile.initByGeo(d.BottomRight.lat, d.BottomRight.long, this.zoom);
 
-      if ("UpLeftQKey" in tileObject) {
+        }
 
-          this.BottomRightTile = new xV.Tiles.Tile();
-          this.BottomRightTile.setQKey(tileObject.UpLeftQKey);
+        if ("BottomRightAddress" in d) {
 
-      }
+            this.BottomRightTile = new xV.Tiles.Tile();
+            this.BottomRightTile.setTileByQKey( d.BottomRightAddress)
 
-      if ("BottomRight" in tileObject && "Zoom" in tileObject) {
+        }
 
-          this.BottomRightTile = new xV.Tiles.Tile();
-          this.BottomRightTile.initByGeo(tileObject.BottomRight.lat, tileObject.BottomRight.long, this.zoom);
+        if ("TileType" in d) this.tileType = d.TileType;
+        if ("TileHeight" in d) this.tileHeight = d.TileHeight;
+        if ("TileWidth" in d) this.tileWidth = d.TileWidth;
 
-      }
+    }
 
-      if ("BottomRightQKey" in tileObject) {
 
-          this.BottomRightTile = new xV.Tiles.Tile();
-          this.BottomRightTile.setQKey( tileObject.BottomRightQKey)
-
-      }
-
-  }
 
 }
 
 xV.Tiles.Manager.prototype = {
 
-  setZoom : function(zoom){
+    setZoom : function(zoom){
 
       this.zoom = zoom;
-  },
+    },
 
-  setDatabase :  function(db) {
+    setDatabase :  function(db) {
 
       this.db =  db;
 
-  },
+    },
 
-  setConf : function(coef) {
+    setProject : function(project_name){
+
+        this.project = project_name;
+
+    },
+
+    setConf : function(coef) {
 
       this.coef =  coef;
 
+    },
+
+    setUpLeftTileByLatLong : function( lat, long ) {
+
+      this.UpLeftTile = new xV.Tiles.Tile();
+      this.UpLeftTile.initByGeo(lat, long, this.zoom);
+
+    },
+
+    setBottomRightTileByLatLong : function( lat, long ) {
+
+        this.BottomRightTile = new xV.Tiles.Tile();
+        this.BottomRightTile.initByGeo(lat, long, this.zoom);
+
+    },
+
+    downloadTiles : function(){
+
+
+        if (!this.isReady) {
+            console.log("@TileManager.downloadTiles : There are missing parameters can not get tiles");
+            return;
+
+        }
+
+        if (this.isDone) {
+            return;
+        }
+
+        if (!this.hasBoundary) {
+
+            UBound = this.UpLeftTile.getTileUpperLeftLatLong();
+            BBound = this.BottomRightTile.getTileLowerRightLatLong();
+
+            this.tileBoundary = [ UBound.long, UBound.lat, BBound.long, BBound.lat  ];
+
+            fs.exists(this.db, function(exists) {
+                if (exists) {
+
+                    this.hasDatabase = true;
+
+                    // get bounds.
+
+                    db = new _sql.Database(this.db);
+                    db.each( "SELECT name, value FROM metadata", function(err, row) {
+
+                       if (row.name === "bounds"){
+
+                           var S = row.value.split(",");
+                           var N = [];
+
+                           var i = S.length;
+                           while (i > 0)
+                           {
+                               i--;
+                               console.log(S[i]);
+                               N.push( parseFloat(S[i]) );
+                           }
+
+                           this.databaseBoundary = N;
+
+                           // rebuild boundary;
+
+                           this.databaseBoundary = [
+                               Math.min( this.databaseBoundary[0], this.tileBoundary[0]),
+                               Math.min (this.databaseBoundary[1], this.tileBoundary[1]),
+                               Math.max( this.databaseBoundary[2], this.tileBoundary[2]),
+                               Math.max( this.databaseBoundary[3], this.tileBoundary[3])
+                           ];
+
+                           this.hasBoundary = true;
+
+                       }
+
+                        this.downloadTiles();
+
+                    });
+
+                    db.close();
+
+                } else {
+
+                    this.hasDatabase = false;
+                    this.databaseBoundary = this.tileBoundary;
+                    this.hasBoundary = true;
+
+                    this.downloadTiles();
+
+
+                }
+            });
+
+        }
+
+        if (this.hasBoundary) {
+
+            if (this.hasDatabase){
+
+                // there is file so i try to get file.
+
+                _MBTiles(this.db, {
+                    name: this.project,
+                    bounds: this.databaseBoundary
+                }, function(xyz, mbtiles, cb) {
+
+
+
+
+                    mbtiles.putTile(
+                        z, x, y,
+                        buf, function(err) {
+                            cb();
+                        });
+
+
+                });
+
+
+            } else {
+
+
+
+            }
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+
+
+    },
+
+
+  writeBufferToFile : function(filename, buf){
+
+      _fs.writeBufferToFile(filename, buf);
+
   },
 
+  writeBufferToDB :  function (filename, buf, z, x, y){
 
-  downLoadTiles : function(){
+//    _MBTiles(filename, {
+//        name: 'Generic Name',
+//        bounds: [-179, -80, 179, 80]
+//    }, function(xyz, mbtiles, cb) {
+//        mbtiles.putTile(
+//            z, x, y,
+//            buf, function(err) {
+//                cb();
+//            });
+//    });
 
-      // TODO
+},
 
-        // 1. Rebuild boundary
+    getBufferFromDB :  function(database, z, x, y , filename ){
+
+//        _MBTiles(database, {
+//            name: 'Generic Name',
+//            bounds: [-179, -80, 179, 80]
+//        }, function(xyz, mbtiles, cb) {
+//
+//            mbtiles.getTile( z,x,y, function (err, grid, headers){
+//
+//                if (err === null){
+//
+//                    writeBufferToFile(filename, grid);
+//                } else {
+//                    console.log(err)
+//                }
+//
+//            } );
+//
+//        });
+
+    },
+
+    testFiles : function( jobs ){
+
+        UBound = this.UpLeftTile.getTileUpperLeftLatLong();
+        BBound = this.BottomRightTile.getTileLowerRightLatLong();
+
+        this.tileBoundary = [ UBound.long, UBound.lat, BBound.long, BBound.lat  ];
+
+       for (var i = 0; i < jobs.length; i++){
+
+           var mb = new _MBTiles( this.db, { name : this.project, bounds: this.tileBoundary } )
+
+
+       }
+
+    },
+
+    tryToGetReady : function(){
+
+        this.isReady = true;
+
+        if (this.db === null){
+            isReady = false;
+            console.log("@TileMangager: no database");
+
+        }
+        if (this.UpLeftTile === null) {
+            isReady = false;
+            console.log("@TileMangager: no UpLeftTile");
+        }
+        if (this.BottomRightTile === null) {
+            isReady = false;
+            console.log("@TileMangager: no BottomRight");
+        }
+
+
+    },
+
+    createJobs : function(){
+
+        jobs = [];
+
+        for (var x = this.UpLeftTile.x; x <= this.BottomRightTile.x; x++ ) {
+
+            for (var y = this.UpLeftTile.y; y <= this.BottomRightTile.y; y++) {
+
+                var tile =  new xV.Tiles.Tile();
+                tile.setQKeyByTile( x, y, this.UpLeftTile.z );
+
+                jobs.push( {name : tile.qKey, bing : tile.getBingAddress(this.tileType), tileX : x, tileY : y,  indb : false});
+
+            }
+        }
+
+//    console.log( this.jobs);
+
+    return jobs
+
+    },
+
+    createComposer : function(file_name){
+
+        var jobs = [];
+
+        info = {
+            xMax :  this.BottomRightTile.x - this.UpLeftTile.x + 1,
+            yMax :  this.BottomRightTile.y - this.UpLeftTile.y + 1,
+            height : this.tileHeight,
+            width : this.tileWidth,
+            coef : 1
+        }
+
+        jobs.push(info)
+
+        for (var x = this.UpLeftTile.x; x <= this.BottomRightTile.x; x++ ) {
+
+            for (var y = this.UpLeftTile.y; y <= this.BottomRightTile.y; y++) {
+
+                var tile =  new xV.Tiles.Tile();
+                tile.setQKeyByTile( x, y, this.UpLeftTile.z );
+
+                jobs.push( {name : tile.qKey + ".jpg", tileX : x - this.UpLeftTile.x, tileY : y - this.UpLeftTile.y });
+
+            }
+        }
+
+        var s = JSON.stringify(jobs);
+        if (typeof(file_name)!='undefined'){
+            _fs.writeFile(  file_name, s);
+        }
+
+        return s;
 
 
 
+    },
 
-  }
+    getMBTileInfo : function() {
 
+        if (!this.isReady) {
+            return;
+        }
 
+        UBound = this.UpLeftTile.getTileUpperLeftLatLong();
+        BBound = this.BottomRightTile.getTileLowerRightLatLong();
+
+        this.tileBoundary = [ UBound.long, UBound.lat, BBound.long, BBound.lat  ];
+
+        o = {
+
+            name :  this.project,
+            description : '',
+            version: '1.0.0',
+            scheme: 'xyz',
+            formatter: null,
+            center: [ 0, 0, this.zoom ],
+            minzoom: 0,
+            maxzoom: this.zoom,
+            bounds: this.tileBoundary
+        }
+
+        return o;
+
+    }
 
 }
 
 
-// --------------
 
+
+
+// --------------
 
 var tileObject = {
 
           DB : "database.db",
+          Project : "world",
           UpLeft : {
-              lat : 0,
-              long : 0
+              lat : -90,
+              long : -180
           },
           UpLeftAddress :  undefined,
           BottomRight : {
@@ -415,24 +798,169 @@ var tileObject = {
               long : 4
           },
           BottomRightAddress : undefined,
-          Zoom : 1,
+          Zoom : 2,
           Coef : 1
 
       }
 
+var world = {
+
+    DB : "world.db",
+    Project : "World",
+    UpLeftAddress: "0000",
+    BottomRightAddress: "3333",
+    Zoom : 4,
+    Coef :1
+
+}
+
+var ny = {
+
+    DB : "ny.db",
+    Project : "New York",
+    UpLeftAddress: "03201011013003312",
+    BottomRightAddress: "03201011120003012",
+    Zoom : 17,
+    Coef :1
 
 
-var tm = xV.Tiles.Manager(tileObject);
-var t = new xV.Tiles.Tile();
-//n.setQKeyByTile(3, 5, 3);
+}
 
-t.setTileByQKey("00");
-t.moveRight(2);
+var ny20x40 = {
 
-console.log("tiles:");
-console.log(t.x);
-console.log(t.y);
-console.log(t.z);
+    DB : "ny.db",
+    Project : "New York",
+    UpLeftAddress: "03201011012311202",
+    BottomRightAddress: "03201011031003302",
+    Zoom : 17,
+    Coef :1,
+    TileType : "45N",
+    TileHeight: 180,
+    TileWidth: 256
+
+
+}
+
+
+var working_with_tile = function(){
+
+    var t1 = new xV.Tiles.Tile();
+    t1.setTileByQKey("03201011012311202");
+    t1.moveRight(20);
+    t1.moveDown(40);
+
+    console.log(t1.qKey);
+
+}
+
+var working_with_files= function( tile_setup, doDownload ){
+
+    var m = new xV.Tiles.Manager(tile_setup);
+    m.tryToGetReady();
+    m.createComposer("tiles.json");
+
+    jobs  = m.createJobs();
+
+    console.log(jobs);
+
+    var downloadData = function(url, fn){
+
+        _request(url, function(err, res, buf){
+
+            writeBufferToFile(fn, buf);
+
+        });
+
+    }
+
+    function writeBufferToFile(fn, buf){
+        _fs.writeFile(fn, buf);
+    }
+
+    var q = _queue(jobs.length);
+
+    jobs.forEach(function(job) {
+
+        //console.log("name:" + job.name );
+        if (doDownload) {
+        q.defer( downloadData, job.bing, job.name + ".jpg" );
+        }
+
+    });
+
+
+
+
+    console.log("Done");
+
+
+
+
+//    tileInfo = m.getMBTileInfo();
+//    console.log(tileInfo);
+
+//_M = new _mb(m.db, function(err, mbtiles) {
+//    if (err) throw  err;
+//
+//    mbtiles.startWriting(function(err){
+//        if (err) throw  err;
+//
+//        mbtiles.putInfo(tileInfo, function(err){
+//            if (err) throw  err;
+//
+//            var q = _queue(1);
+//            jobs.forEach(  function(t) {q.defer(  ) }  )
+//
+//
+//
+//        });
+//
+//
+//    });
+//
+//
+//});
+
+
+
+}
+
+//working_with_tile();
+
+working_with_files( ny20x40, true );
+
+
+
+
+
+
+
+
+
+
+//var t = new xV.Tiles.Tile();
+//
+//t.setTileByQKey("00");
+//
+////t.moveRight(2);
+////console.log("tiles:");
+//
+//console.log(t.x);
+//console.log(t.y);
+//console.log(t.z);
+//
+
+
+
+// init Tiles
+// init database.
+// if database existes rebuild Boundary
+// download Tile if it is not in db
+// if Tile in database get Tile as buffer
+// if tile is not in database download Tile and keep it in memory
+//
+// if requeted put tile to canvas
+
 
 
 
